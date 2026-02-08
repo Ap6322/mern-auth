@@ -22,7 +22,7 @@ const userSchema = new mongoose.Schema(
     },
     verifyOtp: {
       type: String,
-      default: "",
+      default: null,
     },
     verifyOtpExpireAt: {
       type: Date,
