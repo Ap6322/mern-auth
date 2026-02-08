@@ -291,3 +291,152 @@ export const verifyEmail = async (req, res) => {
     });
   }
 };
+// Check user is authenticated or not
+export const isAuthenticated = async (req, res) => {
+  try {
+    console.log("User Authenticated.");
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// Send password reset OTP
+
+export const sendResetOtp = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Please enter your email" });
+    }
+    const user = await userModel.findOne({ email });
+    if (!user) {
+      return res.status.json({
+        success: false,
+        message: "User not found, Please register first",
+      });
+    }
+    const otp = String(Math.floor(100000 + Math.random() * 900000));
+    // Hash OTP before saving
+    const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
+
+    // Save OTP & expiry
+
+    user.resetOtp = hashedOtp;
+    user.resetOtpExpireAt = Date.now() + 5 * 60 * 1000;
+    await user.save();
+
+    //Send email
+    const mailOptions = {
+      from: process.env.SENDER_EMAIL, // must be verified in Brevo
+      to: user.email,
+      subject: `Password reset OTP`,
+      html: `
+    <h2>Welcome to Aakash Tech</h2>
+    <p>Your OTP for resetting your password is ${otp}. Enter this OTP to reset your password.</p>
+    <p>This OTP is valid for 5 Minutes only.</p>
+    <p>Do not share with anyone</p>
+    <p><b>Email:</b> ${user.email}</p>
+    <br/>
+    <p>Thanks for joining us!</p>
+  `,
+    };
+    try {
+      const info = await transporter.sendMail(mailOptions);
+      console.log("Reset OTP sent on email:", info.messageId);
+      return res.status(200).json({
+      success: true,
+      message: "Reset OTP sent on email",
+    });
+
+    } catch (mailErr) {
+      console.error("Email error:", mailErr.message);
+    }
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+//  Reset user password
+
+export const resetPassword = async (req, res) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+    if (!email) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Email is required" });
+    }
+    if (!otp) {
+      return res
+        .status(400)
+        .json({ success: false, message: "OTP is required" });
+    }
+    if (!newPassword) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Password is required" });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 6 characters long",
+      });
+    }
+    // find User
+    const user = await userModel.findOne({ email });
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
+    }
+
+    if (!user.resetOtp || !user.resetOtpExpireAt) {
+      return res
+        .status(400)
+        .json({ success: false, message: "OTP expired" });
+    }
+
+    if (user.resetOtpExpireAt < Date.now()) {
+      user.resetOtp = null;
+      user.resetOtpExpireAt = null;
+      await user.save();
+      return res.status(400).json({ success: false, message: "OTP Expired" });
+    }
+    //  Compare OTP (hashed)
+    const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
+    if (user.resetOtp !== hashedOtp) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid OTP",
+      });
+    }
+
+    // Hash & update password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    user.password = hashedPassword;
+    user.resetOtp = null;
+    user.resetOtpExpireAt = null;
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Password has been reset Successfully",
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};

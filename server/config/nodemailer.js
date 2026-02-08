@@ -8,6 +8,10 @@ export const transporter = nodemailer.createTransport({
     user: process.env.SMTP_USER || "apikey",
     pass: process.env.SMTP_PASSWORD, // SMTP Key from Brevo
   },
+  tls: {
+    rejectUnauthorized: false,
+    minVersion: "TLSv1.2",
+  },
 });
 
 transporter.verify()
